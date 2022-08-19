@@ -18,6 +18,8 @@ export 'package:test_api/fake.dart' show Fake;
 export 'src/mock.dart'
     show
         Mock,
+        AnyArgFallbackMatcher,
+        CaptureArgFallbackMatcher,
         SmartFake,
         named, // ignore: deprecated_member_use_from_same_package
 

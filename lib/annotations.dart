@@ -35,8 +35,13 @@
 class GenerateMocks {
   final List<Type> classes;
   final List<MockSpec> customMocks;
+  final Type? argFallbackMatcherMixin;
 
-  const GenerateMocks(this.classes, {this.customMocks = const []});
+  const GenerateMocks(
+    this.classes, {
+    this.customMocks = const [],
+    this.argFallbackMatcherMixin,
+  });
 }
 
 /// An annotation to direct Mockito to generate mock classes.

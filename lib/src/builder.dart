@@ -367,6 +367,8 @@ class _MockTarget {
 
   final List<analyzer.InterfaceType> mixins;
 
+  final analyzer.InterfaceType? argFallbackMatcherMixin;
+
   final OnMissingStub onMissingStub;
 
   final Set<String> unsupportedMembers;
@@ -380,6 +382,7 @@ class _MockTarget {
     required this.onMissingStub,
     required this.unsupportedMembers,
     required this.fallbackGenerators,
+    this.argFallbackMatcherMixin,
   });
 
   ClassElement get classElement => classType.element;
@@ -441,6 +444,9 @@ class _MockTargetGatherer {
       ElementAnnotation annotation, LibraryElement entryLib) {
     final generateMocksValue = annotation.computeConstantValue()!;
     final classesField = generateMocksValue.getField('classes')!;
+    final argFallbackMatcherType =
+        generateMocksValue.getField('argFallbackMatcherMixin')?.toTypeValue();
+
     if (classesField.isNull) {
       throw InvalidMockitoAnnotationException(
           'The GenerateMocks "classes" argument is missing, includes an '
@@ -458,6 +464,9 @@ class _MockTargetGatherer {
             'Mockito cannot mock `dynamic`');
       }
       final type = _determineDartType(typeToMock, entryLib.typeProvider);
+      final argFallbackMatcherRef = argFallbackMatcherType != null
+          ? _determineDartType(argFallbackMatcherType, entryLib.typeProvider)
+          : null;
       // For a generic class like `Foo<T>` or `Foo<T extends num>`, a type
       // literal (`Foo`) cannot express type arguments. The type argument(s) on
       // `type` have been instantiated to bounds here. Switch to the
@@ -465,14 +474,17 @@ class _MockTargetGatherer {
       final declarationType =
           (type.element.declaration as ClassElement).thisType;
       final mockName = 'Mock${declarationType.element.name}';
-      mockTargets.add(_MockTarget(
-        declarationType,
-        mockName,
-        mixins: [],
-        onMissingStub: OnMissingStub.throwException,
-        unsupportedMembers: {},
-        fallbackGenerators: {},
-      ));
+      mockTargets.add(
+        _MockTarget(
+          declarationType,
+          mockName,
+          mixins: [],
+          onMissingStub: OnMissingStub.throwException,
+          unsupportedMembers: {},
+          fallbackGenerators: {},
+          argFallbackMatcherMixin: argFallbackMatcherRef,
+        ),
+      );
     }
     final customMocksField = generateMocksValue.getField('customMocks');
     if (customMocksField != null && !customMocksField.isNull) {
@@ -1024,6 +1036,16 @@ class _MockClassInfo {
           typeArguments.add(refer(typeParameter.name));
         }
       }
+
+      final argFallbackMatcherMixin = mockTarget.argFallbackMatcherMixin;
+      if (argFallbackMatcherMixin != null) {
+        final mixin = argFallbackMatcherMixin;
+        cBuilder.mixins.add(referImported(
+          mixin.element.name,
+          'package:mockito/mockito.dart',
+        ));
+      }
+
       for (final mixin in mockTarget.mixins) {
         cBuilder.mixins.add(TypeReference((b) {
           b
