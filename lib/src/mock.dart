@@ -136,6 +136,8 @@ class Mock {
   int? _givenHashCode;
 
   _ReturnsCannedResponse _defaultResponse = () => _nullResponse;
+  @protected
+  ArgMatcher? argFallbackMatcher;
 
   void _setExpected(CallPair<dynamic> cannedResponse) {
     _responses.add(cannedResponse);
@@ -159,7 +161,7 @@ class Mock {
       Object? returnValueForMissingStub = deferToDefaultResponse}) {
     // noSuchMethod is that 'magic' that allows us to ignore implementing fields
     // and methods and instead define them later at compile-time per instance.
-    invocation = _useMatchedInvocationIfSet(invocation);
+    invocation = _useMatchedInvocationIfSet(invocation, argFallbackMatcher);
     if (_whenInProgress) {
       _whenCall = _WhenCall(this, invocation);
       return returnValue;
@@ -283,9 +285,15 @@ typedef _ReturnsCannedResponse = CallPair<dynamic> Function();
 // When using an [ArgMatcher], we transform our invocation to have knowledge of
 // which arguments are wrapped, and which ones are not. Otherwise we just use
 // the existing invocation object.
-Invocation _useMatchedInvocationIfSet(Invocation invocation) {
-  if (_storedArgs.isNotEmpty || _storedNamedArgs.isNotEmpty) {
-    invocation = _InvocationForMatchedArguments(invocation);
+Invocation _useMatchedInvocationIfSet(
+  Invocation invocation,
+  ArgMatcher? fallbackMatcher,
+) {
+  final isStubing =
+      _whenInProgress || _untilCalledInProgress || _verificationInProgress;
+  if ((_storedArgs.isNotEmpty || _storedNamedArgs.isNotEmpty) ||
+      (fallbackMatcher != null && isStubing)) {
+    invocation = _InvocationForMatchedArguments(invocation, fallbackMatcher);
   }
   return invocation;
 }
@@ -306,8 +314,13 @@ class _InvocationForMatchedArguments extends Invocation {
   @override
   final bool isSetter;
 
-  factory _InvocationForMatchedArguments(Invocation invocation) {
-    if (_storedArgs.isEmpty && _storedNamedArgs.isEmpty) {
+  factory _InvocationForMatchedArguments(
+    Invocation invocation,
+    ArgMatcher? fallbackMatcher,
+  ) {
+    if (_storedArgs.isEmpty &&
+        _storedNamedArgs.isEmpty &&
+        fallbackMatcher == null) {
       throw StateError(
           '_InvocationForMatchedArguments called when no ArgMatchers have been saved.');
     }
@@ -316,8 +329,14 @@ class _InvocationForMatchedArguments extends Invocation {
     // the various bad states. If all is well with the named arguments, then we
     // can process the positional arguments, and resort to more general errors
     // if the state is still bad.
-    var namedArguments = _reconstituteNamedArgs(invocation);
-    var positionalArguments = _reconstitutePositionalArgs(invocation);
+    var namedArguments = _reconstituteNamedArgs(
+      invocation,
+      fallbackMatcher,
+    );
+    var positionalArguments = _reconstitutePositionalArgs(
+      invocation,
+      fallbackMatcher,
+    );
 
     _storedArgs.clear();
     _storedNamedArgs.clear();
@@ -336,7 +355,10 @@ class _InvocationForMatchedArguments extends Invocation {
   //
   // The `namedArguments` in [invocation] which are null should be represented
   // by a stored value in [_storedNamedArgs].
-  static Map<Symbol, dynamic> _reconstituteNamedArgs(Invocation invocation) {
+  static Map<Symbol, dynamic> _reconstituteNamedArgs(
+    Invocation invocation,
+    ArgMatcher? fallbackMatcher,
+  ) {
     final namedArguments = <Symbol, dynamic>{};
     final storedNamedArgSymbols =
         _storedNamedArgs.keys.map((name) => Symbol(name));
@@ -385,10 +407,21 @@ class _InvocationForMatchedArguments extends Invocation {
       namedArguments[nameSymbol] = arg;
     });
 
+    if (fallbackMatcher != null) {
+      invocation.namedArguments.forEach((key, value) {
+        if (namedArguments[key] == null) {
+          namedArguments[key] = fallbackMatcher;
+        }
+      });
+    }
+
     return namedArguments;
   }
 
-  static List<dynamic> _reconstitutePositionalArgs(Invocation invocation) {
+  static List<dynamic> _reconstitutePositionalArgs(
+    Invocation invocation,
+    ArgMatcher? fallbackMatcher,
+  ) {
     final positionalArguments = <dynamic>[];
     final nullPositionalArguments =
         invocation.positionalArguments.where((arg) => arg == null);
@@ -435,7 +468,9 @@ class _InvocationForMatchedArguments extends Invocation {
     }
     while (positionalIndex < invocation.positionalArguments.length) {
       // Some trailing non-ArgMatcher arguments.
-      positionalArguments.add(invocation.positionalArguments[positionalIndex]);
+      positionalArguments.add(
+        invocation.positionalArguments[positionalIndex] ?? fallbackMatcher,
+      );
       positionalIndex++;
     }
 
@@ -743,6 +778,32 @@ class ArgMatcher {
 
   @override
   String toString() => '$ArgMatcher {$matcher: $_capture}';
+}
+
+/// Mocks invocations unstrict to not provided parameters.
+///
+/// If no arg matcher set up for invocation optional parameter
+/// then `any` will be used as fallback argument matcher.
+///
+/// If you expect null for optional parameter
+/// use `argThat(isNull)` for positional arguments and
+/// `argThat(isNull, named: <arg_name>)` for named arguments.
+mixin AnyArgFallbackMatcher on Mock {
+  @override
+  ArgMatcher? get argFallbackMatcher => ArgMatcher(anything, false);
+}
+
+/// Mocks invocations unstrict to not provided parameters.
+///
+/// If no arg matcher set up for invocation optional parameter
+/// then `capture` will be used as fallback argument matcher.
+///
+/// If you expect `null` for optional parameter
+/// use `argThat(isNull)` for positional arguments and
+/// `argThat(isNull, named: <arg_name>)` for named arguments.
+mixin CaptureArgFallbackMatcher on Mock {
+  @override
+  ArgMatcher? get argFallbackMatcher => ArgMatcher(anything, true);
 }
 
 /// An argument matcher that matches any argument passed in this argument

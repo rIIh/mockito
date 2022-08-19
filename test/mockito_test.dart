@@ -46,6 +46,10 @@ class _MockFoo extends _AbstractFoo with Mock {}
 
 class _MockedClass extends Mock implements _RealClass {}
 
+class _MockedAnyFallbackClass extends Mock
+    with AnyArgFallbackMatcher
+    implements _RealClass {}
+
 void expectFail(String expectedMessage, void Function() expectedToFail) {
   try {
     expectedToFail();
@@ -113,6 +117,46 @@ void main() {
       expect(mock.methodWithNamedArgs(42), isNull);
       expect(mock.methodWithNamedArgs(42, y: 18), isNull);
       expect(mock.methodWithNamedArgs(42, y: 17), equals('Why answer?'));
+    });
+
+    test('should mock method with fallback to anyNamed', () {
+      final mockWithAnyFallback = _MockedAnyFallbackClass();
+      when(mockWithAnyFallback.methodWithTwoNamedArgs(42)).thenReturn('Why?');
+      expect(
+        mockWithAnyFallback.methodWithTwoNamedArgs(123, y: 112, z: 545),
+        isNull,
+      );
+      expect(mockWithAnyFallback.methodWithTwoNamedArgs(42), equals('Why?'));
+      expect(
+        mockWithAnyFallback.methodWithTwoNamedArgs(42, y: 18),
+        equals('Why?'),
+      );
+      expect(
+        mockWithAnyFallback.methodWithTwoNamedArgs(42, y: 17),
+        equals('Why?'),
+      );
+      expect(
+        mockWithAnyFallback.methodWithTwoNamedArgs(42, y: 17, z: 43),
+        equals('Why?'),
+      );
+      expect(
+        mockWithAnyFallback.methodWithTwoNamedArgs(42, y: 112, z: 545),
+        equals('Why?'),
+      );
+    });
+
+    test('should mock method with fallback to any', () {
+      final mockWithAnyFallback = _MockedAnyFallbackClass();
+      when(mockWithAnyFallback.methodWithPositionalArgs(42)).thenReturn('Why?');
+      expect(
+        mockWithAnyFallback.methodWithPositionalArgs(123, 112),
+        isNull,
+      );
+      expect(mockWithAnyFallback.methodWithPositionalArgs(42), equals('Why?'));
+      expect(
+        mockWithAnyFallback.methodWithPositionalArgs(42, null),
+        equals('Why?'),
+      );
     });
 
     test('should mock method with List args', () {
